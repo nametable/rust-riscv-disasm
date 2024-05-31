@@ -363,8 +363,132 @@ pub fn format_inst(tab: usize, dec: &rv_decode) -> String {
     buf
 }
 
+fn rv_ireg_name_sym_simple(register_num: usize) -> String {
+    format!("x{}", register_num)
+}
+
+pub fn format_inst_simple(dec: &rv_decode) -> String {
+    let mut buf: String = String::new();
+
+    for ch in opcode_data[dec.op as usize].format.chars() {
+        match ch {
+            'O' => {
+                buf.push_str(opcode_data[dec.op as usize].name);
+            }
+            '(' => {
+                buf.push('(');
+            }
+            ',' => {
+                buf.push(',');
+            }
+            ')' => {
+                buf.push(')');
+            }
+            '0' => {
+                buf.push_str(&rv_ireg_name_sym_simple(dec.rd as usize));
+            }
+            '1' => {
+                buf.push_str(&rv_ireg_name_sym_simple(dec.rs1 as usize));
+            }
+            '2' => {
+                buf.push_str(&rv_ireg_name_sym_simple(dec.rs2 as usize));
+            }
+            '3' => {
+                buf.push_str(rv_freg_name_sym[dec.rd as usize]);
+            }
+            '4' => {
+                buf.push_str(rv_freg_name_sym[dec.rs1 as usize]);
+            }
+            '5' => {
+                buf.push_str(rv_freg_name_sym[dec.rs2 as usize]);
+            }
+            '6' => {
+                buf.push_str(rv_freg_name_sym[dec.rs3 as usize]);
+            }
+            '7' => {
+                buf.push_str(&format!("{}", dec.rs1));
+            }
+            'i' => {
+                buf.push_str(&format!("{}", dec.imm));
+            }
+            'o' => {
+                buf.push_str(&format!("{}", dec.imm));
+                buf.push_str(" ");
+                buf.push_str(&format!(
+                    "# 0x{:x}",
+                    Wrapping(dec.pc) + Wrapping(dec.imm as u64)
+                ));
+            }
+            'c' => {
+                if let Some(name) = csr_name(dec.imm & 0xfff) {
+                    buf.push_str(name);
+                } else {
+                    buf.push_str(&format!("0x{:03x}", dec.imm & 0xfff));
+                }
+            }
+            'r' => buf.push_str(match dec.rm {
+                rv_rm::rne => "rne",
+                rv_rm::rtz => "rtz",
+                rv_rm::rdn => "rdn",
+                rv_rm::rup => "rup",
+                rv_rm::rmm => "rmm",
+                rv_rm::dyn => "dyn",
+                _ => "inv",
+            }),
+            'p' => {
+                if (dec.pred & rv_fence::i) != 0 {
+                    buf.push('i');
+                }
+                if (dec.pred & rv_fence::o) != 0 {
+                    buf.push('o');
+                }
+                if (dec.pred & rv_fence::r) != 0 {
+                    buf.push('r');
+                }
+                if (dec.pred & rv_fence::w) != 0 {
+                    buf.push('w');
+                }
+            }
+            's' => {
+                if (dec.succ & rv_fence::i) != 0 {
+                    buf.push('i');
+                }
+                if (dec.succ & rv_fence::o) != 0 {
+                    buf.push('o');
+                }
+                if (dec.succ & rv_fence::r) != 0 {
+                    buf.push('r');
+                }
+                if (dec.succ & rv_fence::w) != 0 {
+                    buf.push('w');
+                }
+            }
+            '\t' => {
+                buf.push(' ');
+            }
+            'A' => {
+                if dec.aq {
+                    buf.push_str(".aq");
+                }
+            }
+            'R' => {
+                if dec.rl {
+                    buf.push_str(".rl");
+                }
+            }
+            _ => {}
+        }
+    }
+
+    buf
+}
+
 pub fn disasm_inst(isa: rv_isa, pc: u64, inst: rv_inst) -> String {
     format_inst(32, &decode_inst(isa, pc, inst))
+}
+
+pub fn disasm_inst_simple(isa: rv_isa, inst: rv_inst) -> String {
+    format_inst_simple(&decode_inst(isa, 0, inst))
 }
 
 #[cfg(test)]
@@ -398,5 +522,15 @@ mod tests {
             assert_eq!(&formatted, expected);
             pc = pc + inst_length(*inst) as u64;
         }
+    }
+
+    #[test]
+    fn test_simple() {
+        let inst = 0x10000813;
+        let formatted = disasm_inst_simple(rv_isa::rv64, inst);
+        assert_eq!(formatted, "addi x16,x0,256");
+        let inst = 0x008f80e7;
+        let formatted = disasm_inst_simple(rv_isa::rv64, inst);
+        assert_eq!(formatted, "jalr x1,8(x31)");
     }
 }
